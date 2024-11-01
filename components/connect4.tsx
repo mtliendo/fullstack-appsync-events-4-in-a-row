@@ -1,8 +1,21 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useReducer, useEffect, useRef } from 'react'
 import { Button } from '@/components/ui/button'
 import { useParams, useRouter, useSearchParams } from 'next/navigation'
+import { events } from 'aws-amplify/data'
+import { Amplify } from 'aws-amplify'
+Amplify.configure({
+	API: {
+		Events: {
+			endpoint:
+				'https://gygvn4hmznhahcanughtt7o7aa.appsync-api.us-east-1.amazonaws.com/event',
+			region: 'us-east-1',
+			defaultAuthMode: 'apiKey',
+			apiKey: 'da2-mkbcugpxybh2bdb5eziutml4ba',
+		},
+	},
+})
 
 const ROWS = 6
 const COLS = 7
@@ -10,29 +23,125 @@ const EMPTY = 0
 const PLAYER1 = 1
 const PLAYER2 = 2
 
-// Mock HTTP pub/sub functions
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const publishGameState = async (gameCode: string, gameState: any) => {
-	console.log(`Publishing game state for game ${gameCode}:`, gameState)
-	// In a real implementation, this would send the game state to a server
+type GameState = {
+	board: number[][]
+	currentPlayer: number
+	winner: number | null
+	gameOver: boolean
+	player1Name: string
+	player2Name: string
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type Action =
+	| { type: 'PLACE_PIECE'; col: number }
+	| { type: 'RESET_GAME' }
+	| { type: 'SET_PLAYER_NAME'; player: 1 | 2; name: string }
+	| { type: 'UPDATE_GAME_STATE'; newState: Partial<GameState> }
+
+const publishGameState = async (
+	gameCode: string,
+	gameState: Partial<GameState>
+) => {
+	console.log(`Publishing game state for game ${gameCode}:`, gameState)
+	// In a real implementation, this would send the game state to a server
+	await events.post(`/game/${gameCode}`, gameState)
+}
+
 const subscribeToGameState = async (
 	gameCode: string,
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any
-	callback: (gameState: any) => void
+	// eslint-disable-next-line @typescript-eslint/no-unused-vars
+	callback: (gameState: Partial<GameState>) => void
 ) => {
 	console.log(`Subscribing to game state updates for game ${gameCode}`)
-	// In a real implementation, this would set up a websocket or long-polling connection
-	// For this mock, we'll simulate receiving updates every 5 seconds
-	setInterval(() => {
-		const mockUpdate = {
-			board: [[]],
-			currentPlayer: Math.random() > 0.5 ? PLAYER1 : PLAYER2,
+	// We'll simulate receiving updates including win conditions
+
+	const channel = await events.connect(`/game/${gameCode}`)
+	channel.subscribe({
+		next: (data) => {
+			console.log('received', data)
+		},
+		error: (err) => console.error('error', err),
+	})
+}
+
+function gameReducer(state: GameState, action: Action): GameState {
+	switch (action.type) {
+		case 'PLACE_PIECE': {
+			const { col } = action
+			const newBoard = state.board.map((row) => [...row])
+			const row = findEmptyRow(newBoard, col)
+			if (row === -1 || state.gameOver) return state
+
+			newBoard[row][col] = state.currentPlayer
+			const win = checkWin(newBoard, row, col, state.currentPlayer)
+			const newPlayer = state.currentPlayer === PLAYER1 ? PLAYER2 : PLAYER1
+			return {
+				...state,
+				board: newBoard,
+				currentPlayer: newPlayer,
+				winner: win ? state.currentPlayer : null,
+				gameOver: win,
+			}
 		}
-		callback(mockUpdate)
-	}, 5000)
+		case 'RESET_GAME':
+			return {
+				...state,
+				board: Array(ROWS)
+					.fill(null)
+					.map(() => Array(COLS).fill(EMPTY)),
+				currentPlayer: PLAYER1,
+				winner: null,
+				gameOver: false,
+			}
+		case 'SET_PLAYER_NAME':
+			return action.player === 1
+				? { ...state, player1Name: action.name }
+				: { ...state, player2Name: action.name }
+		case 'UPDATE_GAME_STATE':
+			return { ...state, ...action.newState }
+		default:
+			return state
+	}
+}
+
+function checkWin(
+	board: number[][],
+	row: number,
+	col: number,
+	player: number
+): boolean {
+	const directions = [
+		[0, 1], // horizontal
+		[1, 0], // vertical
+		[1, 1], // diagonal top-left to bottom-right
+		[1, -1], // diagonal top-right to bottom-left
+	]
+
+	return directions.some(([dx, dy]) => {
+		for (let i = -3; i <= 0; i++) {
+			if (
+				[0, 1, 2, 3].every((j) => {
+					const r = row + (i + j) * dx
+					const c = col + (i + j) * dy
+					return (
+						r >= 0 && r < ROWS && c >= 0 && c < COLS && board[r][c] === player
+					)
+				})
+			) {
+				return true
+			}
+		}
+		return false
+	})
+}
+
+function findEmptyRow(board: number[][], col: number): number {
+	for (let row = ROWS - 1; row >= 0; row--) {
+		if (board[row][col] === EMPTY) {
+			return row
+		}
+	}
+	return -1
 }
 
 export function Connect4Component() {
@@ -43,126 +152,70 @@ export function Connect4Component() {
 	const playerName = searchParams.get('player') || 'Player 1'
 	const isCreator = searchParams.get('creator') === 'true'
 
-	const [board, setBoard] = useState<number[][]>(() =>
-		Array(ROWS)
+	const [state, dispatch] = useReducer(gameReducer, {
+		board: Array(ROWS)
 			.fill(null)
-			.map(() => Array(COLS).fill(EMPTY))
-	)
-	const [currentPlayer, setCurrentPlayer] = useState<number>(PLAYER1)
-	const [winner, setWinner] = useState<number | null>(null)
-	const [gameOver, setGameOver] = useState<boolean>(false)
-	const [player1Name] = useState(
-		isCreator ? playerName : 'Waiting for player...'
-	)
-	const [player2Name] = useState(
-		isCreator ? 'Waiting for player...' : playerName
-	)
+			.map(() => Array(COLS).fill(EMPTY)),
+		currentPlayer: PLAYER1,
+		winner: null,
+		gameOver: false,
+		player1Name: isCreator ? playerName : 'Waiting for player...',
+		player2Name: isCreator ? 'Waiting for player...' : playerName,
+	})
+
+	const stateRef = useRef(state)
 
 	useEffect(() => {
-		// Subscribe to game state updates
+		stateRef.current = state
+	}, [state])
+
+	useEffect(() => {
 		subscribeToGameState(gameCode, (gameState) => {
-			setBoard(gameState.board)
-			setCurrentPlayer(gameState.currentPlayer)
+			// Update state if there are any changes
+			if (
+				gameState.currentPlayer !== stateRef.current.currentPlayer ||
+				gameState.winner !== stateRef.current.winner ||
+				gameState.gameOver !== stateRef.current.gameOver
+			) {
+				dispatch({ type: 'UPDATE_GAME_STATE', newState: gameState })
+			}
 		})
 	}, [gameCode])
 
-	function checkWin(
-		board: number[][],
-		row: number,
-		col: number,
-		player: number
-	): boolean {
-		const directions = [
-			[0, 1], // horizontal
-			[1, 0], // vertical
-			[1, 1], // diagonal top-left to bottom-right
-			[1, -1], // diagonal top-right to bottom-left
-		]
-
-		return directions.some(([dx, dy]) => {
-			for (let i = -3; i <= 0; i++) {
-				if (
-					[0, 1, 2, 3].every((j) => {
-						const r = row + (i + j) * dx
-						const c = col + (i + j) * dy
-						return (
-							r >= 0 && r < ROWS && c >= 0 && c < COLS && board[r][c] === player
-						)
-					})
-				) {
-					return true
-				}
-			}
-			return false
-		})
-	}
-
-	function findEmptyRow(board: number[][], col: number): number {
-		for (let row = ROWS - 1; row >= 0; row--) {
-			if (board[row][col] === EMPTY) {
-				return row
-			}
-		}
-		return -1
-	}
-
-	function placePiece(
-		board: number[][],
-		row: number,
-		col: number,
-		player: number
-	) {
-		const newBoard = board.map((r) => [...r])
-		newBoard[row][col] = player
-		return newBoard
-	}
-
 	function handleClick(col: number) {
 		if (
-			gameOver ||
-			(isCreator && currentPlayer !== PLAYER1) ||
-			(!isCreator && currentPlayer !== PLAYER2)
+			state.gameOver ||
+			(isCreator && state.currentPlayer !== PLAYER1) ||
+			(!isCreator && state.currentPlayer !== PLAYER2)
 		)
 			return
 
-		setBoard((prevBoard) => {
-			const row = findEmptyRow(prevBoard, col)
-			if (row === -1) return prevBoard // Column is full
+		const newState = gameReducer(state, { type: 'PLACE_PIECE', col })
+		dispatch({ type: 'PLACE_PIECE', col })
 
-			const newBoard = placePiece(prevBoard, row, col, currentPlayer)
-
-			if (checkWin(newBoard, row, col, currentPlayer)) {
-				setWinner(currentPlayer)
-				setGameOver(true)
-			} else {
-				setCurrentPlayer((prev) => (prev === PLAYER1 ? PLAYER2 : PLAYER1))
-			}
-
-			// Publish the new game state
-			publishGameState(gameCode, {
-				board: newBoard,
-				currentPlayer: currentPlayer === PLAYER1 ? PLAYER2 : PLAYER1,
-			})
-
-			return newBoard
+		publishGameState(gameCode, {
+			board: newState.board,
+			currentPlayer: newState.currentPlayer,
+			winner: newState.winner,
+			gameOver: newState.gameOver,
 		})
 	}
 
 	function resetGame() {
-		const newBoard = Array(ROWS)
-			.fill(null)
-			.map(() => Array(COLS).fill(EMPTY))
-		setBoard(newBoard)
-		setCurrentPlayer(PLAYER1)
-		setWinner(null)
-		setGameOver(false)
-		publishGameState(gameCode, { board: newBoard, currentPlayer: PLAYER1 })
+		const newState = gameReducer(state, { type: 'RESET_GAME' })
+		dispatch({ type: 'RESET_GAME' })
+		publishGameState(gameCode, {
+			board: newState.board,
+			currentPlayer: newState.currentPlayer,
+			winner: newState.winner,
+			gameOver: newState.gameOver,
+		})
 	}
 
 	const playerColor = isCreator ? 'red' : 'yellow'
 	const isPlayerTurn =
-		(isCreator && currentPlayer === PLAYER1) ||
-		(!isCreator && currentPlayer === PLAYER2)
+		(isCreator && state.currentPlayer === PLAYER1) ||
+		(!isCreator && state.currentPlayer === PLAYER2)
 
 	return (
 		<div className="flex flex-col items-center justify-center min-h-screen bg-gray-100 p-4">
@@ -181,7 +234,7 @@ export function Connect4Component() {
 				</span>
 			</p>
 			<div className="bg-blue-600 p-4 rounded-lg shadow-lg">
-				{board.map((row, rowIndex) => (
+				{state.board.map((row, rowIndex) => (
 					<div key={rowIndex} className="flex">
 						{row.map((cell, colIndex) => (
 							<div
@@ -202,16 +255,19 @@ export function Connect4Component() {
 				))}
 			</div>
 			<div className="mt-8 text-center">
-				{!gameOver && (
+				{!state.gameOver && (
 					<p className="text-xl font-semibold mb-4">
 						Current Player:{' '}
-						{currentPlayer === PLAYER1 ? player1Name : player2Name}
+						{state.currentPlayer === PLAYER1
+							? state.player1Name
+							: state.player2Name}
 						{isPlayerTurn ? ' (Your turn)' : ''}
 					</p>
 				)}
-				{winner && (
+				{state.winner && (
 					<p className="text-2xl font-bold mb-4">
-						{winner === PLAYER1 ? player1Name : player2Name} wins!
+						{state.winner === PLAYER1 ? state.player1Name : state.player2Name}{' '}
+						wins!
 					</p>
 				)}
 				<div className="space-x-4">
