@@ -62,12 +62,9 @@ export function Connect4Component() {
 
 	useEffect(() => {
 		const subscribeToGameState = async (gameCode: string) => {
-			console.log(`Subscribing to game state updates for game ${gameCode}`)
-
-			const channel = await events.connect(`/game/${gameCode}`)
+			const channel = await events.connect(`/game/${gameCode}`, {})
 			const sub = channel.subscribe({
 				next: (data) => {
-					console.log('received', data)
 					dispatch({ type: 'UPDATE_GAME_STATE', newState: data })
 				},
 				error: (err) => console.error('error', err),

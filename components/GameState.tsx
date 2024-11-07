@@ -17,6 +17,7 @@ type Action =
 	| { type: 'RESET_GAME' }
 	| { type: 'SET_PLAYER_NAME'; player: 1 | 2; name: string }
 	| { type: 'UPDATE_GAME_STATE'; newState: Partial<GameState> }
+
 export function gameReducer(state: GameState, action: Action): GameState {
 	switch (action.type) {
 		case 'PLACE_PIECE': {
