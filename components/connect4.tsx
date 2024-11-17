@@ -1,40 +1,12 @@
 'use client'
 
-import { useReducer, useEffect, useRef } from 'react'
+import { useReducer, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
 import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import { events } from 'aws-amplify/data'
-import { Amplify } from 'aws-amplify'
 
-import {
-	GameState,
-	gameReducer,
-	ROWS,
-	COLS,
-	EMPTY,
-	PLAYER1,
-	PLAYER2,
-} from './GameState'
+import { gameReducer, ROWS, COLS, EMPTY, PLAYER1, PLAYER2 } from './GameState'
 
-Amplify.configure({
-	API: {
-		Events: {
-			endpoint:
-				'https://gygvn4hmznhahcanughtt7o7aa.appsync-api.us-east-1.amazonaws.com/event',
-			region: 'us-east-1',
-			defaultAuthMode: 'apiKey',
-			apiKey: 'da2-mkbcugpxybh2bdb5eziutml4ba',
-		},
-	},
-})
-
-const publishGameState = async (
-	gameCode: string,
-	gameState: Partial<GameState>
-) => {
-	console.log(`Publishing game state for game ${gameCode}:`, gameState)
-	await events.post(`/game/${gameCode}`, gameState)
-}
 export function Connect4Component() {
 	const params = useParams()
 	const router = useRouter()
@@ -42,8 +14,7 @@ export function Connect4Component() {
 	const gameCode = params.code as string
 	const playerName = searchParams.get('player') || 'Player 1'
 	const isCreator = searchParams.get('creator') === 'true'
-
-	const [state, dispatch] = useReducer(gameReducer, {
+	const initialGameState = {
 		board: Array(ROWS)
 			.fill(null)
 			.map(() => Array(COLS).fill(EMPTY)),
@@ -52,33 +23,32 @@ export function Connect4Component() {
 		gameOver: false,
 		player1Name: isCreator ? playerName : 'Waiting for player...',
 		player2Name: isCreator ? 'Waiting for player...' : playerName,
-	})
+	}
 
-	const stateRef = useRef(state)
-
-	useEffect(() => {
-		stateRef.current = state
-	}, [state])
+	const [state, dispatch] = useReducer(gameReducer, initialGameState)
 
 	useEffect(() => {
 		const subscribeToGameState = async (gameCode: string) => {
-			const channel = await events.connect(`/game/${gameCode}`, {})
+			const channel = await events.connect(`/game/${gameCode}`)
 			const sub = channel.subscribe({
 				next: (data) => {
-					dispatch({ type: 'UPDATE_GAME_STATE', newState: data })
+					dispatch({ type: 'UPDATE_GAME_STATE', newState: data.event })
 				},
-				error: (err) => console.error('error', err),
+				error: (err) => console.error('uh oh spaghetti-o', err),
 			})
 			return sub
 		}
 
-		const sub = subscribeToGameState(gameCode)
+		const subPromise = subscribeToGameState(gameCode)
 		return () => {
-			Promise.resolve(sub).then((sub) => sub.unsubscribe())
+			Promise.resolve(subPromise).then((sub) => {
+				console.log('closing the connection')
+				sub.unsubscribe()
+			})
 		}
 	}, [gameCode])
 
-	function handleClick(col: number) {
+	async function handleClick(col: number) {
 		if (
 			state.gameOver ||
 			(isCreator && state.currentPlayer !== PLAYER1) ||
@@ -87,9 +57,9 @@ export function Connect4Component() {
 			return
 
 		const newState = gameReducer(state, { type: 'PLACE_PIECE', col })
+		console.log('the new state from placing  a piece', newState)
 		dispatch({ type: 'PLACE_PIECE', col })
-
-		publishGameState(gameCode, {
+		await events.post(`/game/${gameCode}`, {
 			board: newState.board,
 			currentPlayer: newState.currentPlayer,
 			winner: newState.winner,
@@ -97,10 +67,11 @@ export function Connect4Component() {
 		})
 	}
 
-	function resetGame() {
+	async function resetGame() {
 		const newState = gameReducer(state, { type: 'RESET_GAME' })
 		dispatch({ type: 'RESET_GAME' })
-		publishGameState(gameCode, {
+
+		await events.post(`/game/${gameCode}`, {
 			board: newState.board,
 			currentPlayer: newState.currentPlayer,
 			winner: newState.winner,
