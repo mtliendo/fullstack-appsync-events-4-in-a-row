@@ -52,7 +52,6 @@ export function gameReducer(state: GameState, action: Action): GameState {
 				? { ...state, player1Name: action.name }
 				: { ...state, player2Name: action.name }
 		case 'UPDATE_GAME_STATE':
-			console.log('updating game state', action.newState)
 			return { ...state, ...action.newState }
 		default:
 			return state
