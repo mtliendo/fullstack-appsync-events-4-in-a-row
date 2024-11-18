@@ -89,7 +89,7 @@ export default function Connect4Component() {
 		}
 	}
 
-	async function handleClick(col: number) {
+	async function handleBoardClick(col: number) {
 		if (
 			state.gameOver ||
 			(isCreator && state.currentPlayer !== PLAYER1) ||
@@ -130,7 +130,7 @@ export default function Connect4Component() {
 				<div className="max-w-3xl mx-auto">
 					<Connect4Board
 						gameCode={gameCode}
-						handleClick={handleClick}
+						handleClick={handleBoardClick}
 						isPlayerTurn={isPlayerTurn}
 						playerColor={playerColor}
 						resetGame={resetGame}

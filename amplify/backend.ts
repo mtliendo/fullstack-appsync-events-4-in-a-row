@@ -7,20 +7,14 @@ import {
 } from 'aws-cdk-lib/aws-appsync'
 import { Policy, PolicyStatement } from 'aws-cdk-lib/aws-iam'
 
-const backend = defineBackend({
-	auth,
-})
+const backend = defineBackend({ auth })
 
 const customResources = backend.createStack('custom-resources-connect4')
 
 const cfnEventAPI = new CfnApi(customResources, 'cfnEventAPI', {
 	name: 'serverless-connect4',
 	eventConfig: {
-		authProviders: [
-			{
-				authType: AuthorizationType.IAM,
-			},
-		],
+		authProviders: [{ authType: AuthorizationType.IAM }],
 		connectionAuthModes: [{ authType: AuthorizationType.IAM }],
 		defaultPublishAuthModes: [{ authType: AuthorizationType.IAM }],
 		defaultSubscribeAuthModes: [{ authType: AuthorizationType.IAM }],
@@ -32,7 +26,7 @@ new CfnChannelNamespace(customResources, 'cfnEventAPINamespace', {
 	name: 'game',
 })
 
-// Add the policy as an inline policy (not managedPolicy) to avoid circular deps
+// Add the policy as an inline policy (not `addToPrincialPolicy`) to avoid circular deps
 backend.auth.resources.unauthenticatedUserIamRole.attachInlinePolicy(
 	new Policy(customResources, 'AppSyncEventPolicy', {
 		statements: [
