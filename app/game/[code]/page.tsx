@@ -125,7 +125,7 @@ export default function Connect4Component() {
 		(!isCreator && state.currentPlayer === PLAYER2)
 
 	return (
-		<div className="flex h-screen">
+		<div className="md:flex h-screen">
 			<div className="flex-1 bg-muted">
 				<div className="max-w-3xl mx-auto">
 					<Connect4Board
