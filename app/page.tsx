@@ -54,7 +54,7 @@ export default function StartGameComponent() {
 		<div className="flex items-center justify-center min-h-screen bg-gray-100">
 			<Card className="w-[350px]">
 				<CardHeader>
-					<CardTitle>Start a Connect 4 Game</CardTitle>
+					<CardTitle>Start a 4-in-a-row</CardTitle>
 					<CardDescription>
 						Enter your screen name and generate a new game or join an existing
 						one

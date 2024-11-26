@@ -25,7 +25,7 @@ export const Connect4Board = ({
 
 	return (
 		<div className="flex flex-col items-center justify-center min-h-screen bg-gray-100 p-4">
-			<h1 className="text-4xl font-bold mb-2 text-gray-800">Connect 4</h1>
+			<h1 className="text-4xl font-bold mb-2 text-gray-800">Four in a Row!</h1>
 			<h2 className="text-2xl font-semibold mb-8 text-gray-600">
 				Game Code: {gameCode}
 			</h2>
