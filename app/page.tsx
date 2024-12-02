@@ -12,6 +12,7 @@ import {
 	CardTitle,
 } from '@/components/ui/card'
 import { Label } from '@/components/ui/label'
+import Image from 'next/image'
 
 function generateShortCode() {
 	const characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
@@ -52,6 +53,13 @@ export default function StartGameComponent() {
 
 	return (
 		<div className="flex items-center justify-center min-h-screen bg-gray-100">
+			<Image
+				src={'/images/website.png'}
+				alt={'web qr code'}
+				width={300}
+				height={200}
+				className="gap-4"
+			/>
 			<Card className="w-[350px]">
 				<CardHeader>
 					<CardTitle>Start a 4-in-a-row</CardTitle>
